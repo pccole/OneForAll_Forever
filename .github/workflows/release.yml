@@ -1,0 +1,47 @@
+name: Release for WowUp
+
+# WowUp only installs from GitHub Release assets. It needs a zip whose name
+# ends in "-forever" and which has the addon folder (OneForAll/) at its root.
+# This publishes one release per "## Version:" in OneForAll.toc.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "OneForAll/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read addon version
+        id: version
+        run: |
+          version=$(sed -n 's/^## Version:[[:space:]]*//p' OneForAll/OneForAll.toc | tr -d '\r')
+          if [ -z "$version" ]; then
+            echo "No '## Version:' found in OneForAll/OneForAll.toc" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release if this version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to do."
+            exit 0
+          fi
+          git archive --format=zip -o OneForAll-forever.zip HEAD OneForAll
+          gh release create "$tag" OneForAll-forever.zip \
+            --target "$GITHUB_SHA" \
+            --title "OneForAll $VERSION" \
+            --notes "OneForAll $VERSION"
